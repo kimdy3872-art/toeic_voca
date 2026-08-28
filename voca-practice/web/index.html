@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to real values
+         on notched iPhones; without it the tab bar sits under the home indicator. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0b16">
+    <title>TOEIC Voca Trainer - 스마트 단어 연습장</title>
+    <meta name="description" content="엑셀 파일과 실시간 연동되어 오답을 저장하는 모던 주차별 TOEIC 단어 학습 및 퀴즈 애플리케이션">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Gradients -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <svg class="brand-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="url(#brand-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 7V12L15 15" stroke="url(#brand-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <defs>
+                        <linearGradient id="brand-grad" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#8A2387"/>
+                            <stop offset="0.5" stop-color="#E94057"/>
+                            <stop offset="1" stop-color="#F27121"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span class="brand-name">Voca Trainer</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <button id="nav-btn-dashboard" class="nav-item active" onclick="switchView('dashboard')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    대시보드
+                </button>
+                <button id="nav-btn-study" class="nav-item" onclick="switchView('study')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                    카드 암기학습
+                </button>
+                <button id="nav-btn-quiz" class="nav-item" onclick="switchView('quiz')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    연습 퀴즈
+                </button>
+                <button id="nav-btn-tracing" class="nav-item" onclick="switchView('tracing')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    단어 따라쓰기
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="btn-sync" class="export-btn" onclick="syncNow()">
+                    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    Mac과 동기화
+                </button>
+                <button class="settings-btn" onclick="openSettings()">
+                    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    설정 · 엑셀 백업
+                </button>
+                <div class="sync-status">
+                    <span id="sync-indicator" class="status-indicator"></span>
+                    <span id="sync-status-text">아직 동기화하지 않음</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-title">
+                    <h1 id="view-title">학습 대시보드</h1>
+                    <p id="view-subtitle">나의 단어 학습 상태를 모니터링합니다.</p>
+                </div>
+                <div class="header-controls">
+                    <div class="select-wrapper">
+                        <label for="category-select" class="sr-only">카테고리 선택</label>
+                        <select id="category-select" onchange="onCategoryChange()">
+                            <option value="all">전체 DAY</option>
+                        </select>
+                    </div>
+                    <!-- Mobile-only: the sidebar (and its footer) collapses to a bottom tab bar. -->
+                    <button id="btn-sync-mobile" class="icon-btn mobile-only" onclick="syncNow()" aria-label="Mac과 동기화">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    </button>
+                    <button class="icon-btn mobile-only" onclick="openSettings()" aria-label="설정">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- 1. Dashboard View -->
+            <section id="view-dashboard" class="content-view active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon icon-blue">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                        </div>
+                        <div class="stat-info">
+                            <h3>총 단어 수</h3>
+                            <p id="stat-total-words" class="stat-value">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon icon-green">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        </div>
+                        <div class="stat-info">
+                            <h3>완료한 단어</h3>
+                            <p id="stat-mastered-words" class="stat-value">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon icon-orange">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                        </div>
+                        <div class="stat-info">
+                            <h3>오답 등록 단어</h3>
+                            <p id="stat-incorrect-words" class="stat-value">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-details">
+                    <div class="chart-panel card">
+                        <h2>DAY별 학습 진도율</h2>
+                        <div id="progress-list" class="progress-list">
+                            <!-- JS will generate progress bars here -->
+                        </div>
+                    </div>
+                    <div class="info-panel card">
+                        <h2>사용 안내 및 팁</h2>
+                        <ul class="tip-list">
+                            <li>
+                                <div class="tip-icon">💡</div>
+                                <div class="tip-text">엑셀 파일(<code>토익 단어장.xlsx</code>)에 새로운 DAY 컬럼을 추가하고 <code>run.py</code>를 실행하면 새 단어가 반영됩니다. iPhone 앱에서는 <strong>동기화</strong> 버튼을 누르면 받아옵니다.</div>
+                            </li>
+                            <li>
+                                <div class="tip-icon">✍️</div>
+                                <div class="tip-text">연습 퀴즈에서 오답이 발생하면 <strong>'오답노트'</strong>에 자동 등록되고, 이후 어떤 퀴즈에서든 해당 단어를 한 번이라도 맞히면 오답노트에서 즉시 제거됩니다.</div>
+                            </li>
+                            <li>
+                                <div class="tip-icon">📱</div>
+                                <div class="tip-text">학습 기록은 기기 안에 먼저 저장되므로 <strong>인터넷 없이도</strong> 퀴즈를 풀 수 있습니다. <strong>동기화</strong>를 누르면 Mac과 오답노트·완료 단어를 양방향으로 맞추고, <strong>엑셀 백업</strong>은 <code>오답노트</code> 시트에 기록합니다.</div>
+                            </li>
+                            <li>
+                                <div class="tip-icon">⌨️</div>
+                                <div class="tip-text"><strong>단어 따라쓰기</strong>는 뜻을 보고 철자를 채우는 모드입니다. <strong>철자 힌트</strong>를 끄면 회색 글씨가 사라져 스펠링 시험이 되고, 다 쓰지 못한 채 Enter를 누르면 정답 철자를 잠시 보여줍니다.</div>
+                            </li>
+                            <li>
+                                <div class="tip-icon">🔊</div>
+                                <div class="tip-text">카드 암기 모드에서는 스피커 버튼을 눌러 영어 발음(TTS)을 직접 들을 수 있습니다.</div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Study View -->
+            <section id="view-study" class="content-view">
+                <div class="study-layout">
+                    <!-- Flashcard Outer -->
+                    <div class="flashcard-container">
+                        <div id="flashcard" class="flashcard" onclick="flipCard()">
+                            <!-- Front (English) -->
+                            <div class="card-side card-front">
+                                <span class="card-category" id="card-cat-front">DAY7</span>
+                                <div class="card-content">
+                                    <h2 id="card-word">word</h2>
+                                    <div id="card-phonetic" style="color: #666; font-size: 1.1rem; margin-bottom: 0.5rem; font-family: monospace; min-height: 1.5rem;"></div>
+                                    <button class="tts-btn" onclick="speakWord(event)" aria-label="발음 듣기">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                                    </button>
+                                </div>
+                                <span class="card-hint">카드를 클릭하거나 Space 키를 눌러 뜻을 확인하세요</span>
+                            </div>
+                            <!-- Back (Korean) -->
+                            <div class="card-side card-back">
+                                <span class="card-category" id="card-cat-back">DAY7</span>
+                                <div class="card-content">
+                                    <h2 id="card-translation">뜻</h2>
+                                </div>
+                                <span class="card-hint">카드를 클릭하여 다시 영단어를 확인하세요</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Flashcard Controls -->
+                    <div class="study-controls">
+                        <button id="study-btn-prev" class="control-btn" onclick="prevWord()" aria-label="이전 단어">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            이전
+                        </button>
+                        <div class="study-progress">
+                            <span id="study-index">0</span> / <span id="study-total">0</span>
+                        </div>
+                        <button id="study-btn-next" class="control-btn" onclick="nextWord()" aria-label="다음 단어">
+                            다음
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                        </button>
+                    </div>
+
+                    <!-- Shortcuts Info -->
+                    <div class="shortcuts-legend">
+                        <span>단축키: <strong>Space</strong> (카드 뒤집기)</span>
+                        <span><strong>← / →</strong> (이전 / 다음 단어)</span>
+                        <span><strong>Enter</strong> (발음 듣기)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Quiz View -->
+            <section id="view-quiz" class="content-view">
+                <!-- Quiz Config Card -->
+                <div id="quiz-config" class="quiz-config-card card">
+                    <h2>퀴즈 설정</h2>
+                    <p class="config-desc">학습하고 싶은 방식과 형식을 지정하여 맞춤형 퀴즈를 진행합니다.</p>
+                    
+                    <div class="config-groups">
+                        <!-- Direction -->
+                        <div class="config-group">
+                            <label>퀴즈 진행 방향</label>
+                            <div class="option-chips">
+                                <button id="chip-dir-eng-to-kor" class="chip active" onclick="setQuizDirection('eng-to-kor')">
+                                    영단어 ➔ 한글 뜻
+                                </button>
+                                <button id="chip-dir-kor-to-eng" class="chip" onclick="setQuizDirection('kor-to-eng')">
+                                    한글 뜻 ➔ 영단어
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Quiz Type -->
+                        <div class="config-group">
+                            <label>문제 유형</label>
+                            <div class="option-chips">
+                                <button id="chip-type-choice" class="chip active" onclick="setQuizType('choice')">
+                                    객관식 (4지선다)
+                                </button>
+                                <button id="chip-type-write" class="chip" onclick="setQuizType('write')">
+                                    주관식 (직접 입력)
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Quiz Range -->
+                        <div class="config-group">
+                            <label>퀴즈 대상 범위 (<span id="quiz-range-selected-category">전체 DAY</span>)</label>
+                            <div class="option-chips">
+                                <button id="chip-range-all" class="chip active" onclick="setQuizRange('all')">
+                                    선택한 DAY 전체 단어 (<span id="quiz-range-all-count">0</span>개)
+                                </button>
+                                <button id="chip-range-incorrect" class="chip" onclick="setQuizRange('incorrect')">
+                                    선택한 DAY 틀린 단어만 (<span id="quiz-range-incorrect-count">0</span>개)
+                                </button>
+                            </div>
+                            <div class="option-chips" style="margin-top: 0.75rem;">
+                                <button id="chip-full-range" class="chip" onclick="toggleFullRange()">
+                                    🔓 전체 출제 (기본 10문제 제한 해제)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="start-quiz-btn" onclick="startQuiz()">
+                        퀴즈 시작하기
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-arrow"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </button>
+                </div>
+
+                <!-- Active Quiz Screen -->
+                <div id="quiz-screen" class="quiz-screen-container" style="display: none;">
+                    <div class="quiz-header">
+                        <div class="quiz-info-bar">
+                            <span id="quiz-question-number">문제 1/10</span>
+                            <span id="quiz-score-display">점수: 0</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div id="quiz-progress-bar" class="quiz-progress-bar" style="width: 10%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="quiz-card card">
+                        <span id="quiz-card-category" class="card-category">DAY7</span>
+                        <div class="question-container">
+                            <h2 id="quiz-question-text">Question Word</h2>
+                            <button id="quiz-tts-btn" class="tts-btn" onclick="speakQuizWord()" aria-label="발음 듣기">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                            </button>
+                        </div>
+
+                        <!-- Option A: Multiple Choice Container -->
+                        <div id="quiz-options-container" class="quiz-options-grid">
+                            <!-- JS will generate 4 options here -->
+                        </div>
+                        <button id="quiz-choice-submit-btn" class="submit-answer-btn" onclick="submitChoiceAnswer()" style="margin-top: 1.25rem; width: 100%; display: none;">선택 완료 (Enter)</button>
+
+                        <!-- Option B: Typing Test Container -->
+                        <div id="quiz-input-container" class="quiz-input-box" style="display: none;">
+                            <label for="quiz-typing-input" class="sr-only">정답 입력</label>
+                            <input type="text" id="quiz-typing-input" placeholder="정답 단어 스펠링을 입력하세요" autocomplete="off" onkeydown="handleQuizInputKey(event)">
+                            <button class="submit-answer-btn" onclick="submitTypedAnswer()">제출 (Enter)</button>
+                        </div>
+
+                        <!-- Feedback Message -->
+                        <div id="quiz-feedback" class="quiz-feedback-message" style="display: none;">
+                            <div class="feedback-icon" id="feedback-icon"></div>
+                            <div class="feedback-text">
+                                <h3 id="feedback-title">정답입니다!</h3>
+                                <p id="feedback-subtext">오답 정답 해설 영역</p>
+                            </div>
+                            <div class="feedback-buttons" style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+                                <button id="quiz-override-correct-btn" class="override-correct-btn" onclick="overrideMarkCorrect()" style="display: none;">그래도 맞았어요 ✅</button>
+                                <button id="quiz-prev-btn" class="prev-question-btn" onclick="prevQuizQuestion()" style="display: none;">이전 문제</button>
+                                <button id="quiz-next-btn" class="next-question-btn" onclick="nextQuizQuestion()">다음 문제</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quiz Results Screen -->
+                <div id="quiz-results" class="quiz-results-container card" style="display: none;">
+                    <div class="results-header">
+                        <h2>퀴즈 결과</h2>
+                        <p>연습이 완료되었습니다! 오답은 원본 엑셀에 자동으로 기록됩니다.</p>
+                    </div>
+
+                    <div class="score-circle">
+                        <span id="results-score-percent">0%</span>
+                        <span id="results-score-fraction">0/0</span>
+                    </div>
+
+                    <div class="results-stats">
+                        <div class="result-stat-item">
+                            <span class="label">맞춘 문제</span>
+                            <span id="results-correct-count" class="value correct">0</span>
+                        </div>
+                        <div class="result-stat-item">
+                            <span class="label">틀린 문제</span>
+                            <span id="results-incorrect-count" class="value incorrect">0</span>
+                        </div>
+                    </div>
+
+                    <div class="results-actions">
+                        <button class="action-btn-primary" onclick="restartQuizSetup()">퀴즈 다시 설정</button>
+                        <button class="action-btn-secondary" onclick="switchView('dashboard')">대시보드로 돌아가기</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Tracing View -->
+            <section id="view-tracing" class="content-view">
+                <div class="study-layout">
+                    <div class="tracing-card card">
+                        <div class="tracing-card-head">
+                            <span class="card-category" id="tracing-cat">-</span>
+                            <span class="tracing-done-count">완료 <strong id="tracing-done">0</strong> / <span id="tracing-done-total">0</span></span>
+                        </div>
+
+                        <p id="tracing-empty" class="tracing-empty" style="display: none;">선택된 카테고리에 단어가 없습니다.</p>
+
+                        <div id="tracing-body" class="tracing-body">
+                            <p id="tracing-meaning" class="tracing-meaning">뜻</p>
+
+                            <!-- The visible letters are the slots; the input on top is
+                                 transparent and only owns the caret and the keyboard. -->
+                            <div id="tracing-track" class="tracing-track" onclick="focusTracingInput()">
+                                <div id="tracing-slots" class="tracing-slots" aria-hidden="true"></div>
+                                <input type="text" id="tracing-input" class="tracing-input"
+                                       autocomplete="off" autocorrect="off" autocapitalize="none"
+                                       spellcheck="false" aria-label="영단어 따라쓰기 입력"
+                                       oninput="handleTracingInput()"
+                                       onkeydown="handleTracingInputKey(event)"
+                                       onclick="snapTracingCaret()"
+                                       onfocus="onTracingInputFocus()"
+                                       onblur="onTracingInputBlur()">
+                            </div>
+
+                            <span class="tracing-tap-hint">위 칸을 탭하여 키보드를 여세요</span>
+
+                            <div class="tracing-meta">
+                                <span id="tracing-phonetic" class="tracing-phonetic"></span>
+                                <button class="tts-btn" onclick="speakTracingWord(event)" aria-label="발음 듣기">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                                </button>
+                            </div>
+
+                            <div class="tracing-actions">
+                                <button id="tracing-hint-btn" class="chip active" onclick="toggleTracingHint()">철자 힌트</button>
+                                <button id="tracing-reset-btn" class="chip" onclick="resetTracingInput()">지우고 다시</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tracing Controls -->
+                    <div class="study-controls">
+                        <button id="tracing-btn-prev" class="control-btn" onclick="prevTracingWord()" aria-label="이전 단어">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            이전
+                        </button>
+                        <div class="study-progress">
+                            <span id="tracing-index">0</span> / <span id="tracing-total">0</span>
+                        </div>
+                        <button id="tracing-btn-next" class="control-btn" onclick="nextTracingWord()" aria-label="다음 단어">
+                            다음
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                        </button>
+                    </div>
+
+                    <div class="shortcuts-legend">
+                        <span>단축키: <strong>Enter</strong> (채점 / 다음 단어)</span>
+                        <span><strong>← / →</strong> (이전 / 다음 단어)</span>
+                        <span><strong>Esc</strong> (지우고 다시)</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Settings / Sync Modal -->
+    <div id="settings-overlay" class="modal-overlay" onclick="onSettingsOverlayClick(event)">
+        <div class="modal-panel card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="modal-header">
+                <h2 id="settings-title">설정 및 동기화</h2>
+                <button class="modal-close" onclick="closeSettings()" aria-label="닫기">&times;</button>
+            </div>
+
+            <div class="modal-section">
+                <label for="server-url-input">Mac 서버 주소</label>
+                <p class="modal-hint">Mac에서 <code>run.py</code>를 실행하고 같은 Wi-Fi에 연결한 상태여야 합니다.</p>
+                <input type="url" id="server-url-input" placeholder="http://dykimMacBook-Pro.local:8080"
+                       autocapitalize="off" autocorrect="off" spellcheck="false">
+                <div class="modal-actions">
+                    <button class="action-btn-primary" onclick="saveServerUrl()">주소 저장</button>
+                    <button class="action-btn-secondary" onclick="resetServerUrl()">기본값으로</button>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <label>동기화</label>
+                <p class="modal-hint" id="modal-sync-status">아직 동기화하지 않음</p>
+                <div class="modal-actions">
+                    <button class="action-btn-primary" onclick="syncNow()">지금 동기화</button>
+                    <button id="btn-export-excel" class="action-btn-secondary" onclick="exportIncorrectToExcel()">오답노트 엑셀 백업</button>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <label>저장된 학습 기록</label>
+                <p class="modal-hint" id="modal-local-stats">-</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transient status messages -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Javascript -->
+    <script src="store.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

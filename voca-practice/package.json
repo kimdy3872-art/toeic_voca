@@ -1,0 +1,20 @@
+{
+  "name": "voca-trainer",
+  "version": "1.0.0",
+  "description": "TOEIC 단어장 - 웹 + iOS",
+  "scripts": {
+    "serve": "python3 run.py",
+    "ios:copy": "cap copy ios",
+    "ios:open": "cap open ios",
+    "ios:resign": "./resign-ios.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  }
+}

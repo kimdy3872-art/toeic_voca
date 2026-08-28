@@ -1,0 +1,11 @@
+{
+  "appId": "com.dykim.vocatrainer",
+  "appName": "Voca Trainer",
+  "webDir": "web",
+  "ios": {
+    "contentInset": "always"
+  },
+  "server": {
+    "iosScheme": "capacitor"
+  }
+}
