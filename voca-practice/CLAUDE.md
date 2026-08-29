@@ -40,6 +40,9 @@ npx cap copy ios             # web/ → ios/App/App/public/
 - 병합은 `updated_at` 기준 last-write-wins. 단 `wrong_count`는 `max()`
 - iOS 저장 키: `voca_incorrect_v2`, `voca_mastered_v2`, `voca_words_v2`,
   `voca_server_url`, `voca_last_sync`
+- `incorrect_words` 행에는 `next_review_date`(YYYY-MM-DD) 와 `correct_streak` 가
+  붙는다. 둘 다 `updated_at` LWW 를 따른다 — 단조 증가가 아니라서 max() 를
+  쓰면 안 된다 (정답이 날짜를 밀고, 오답이 연속 횟수를 0으로 되돌린다)
 
 ### 엑셀을 고쳤을 때 폰에 반영하는 법
 
@@ -134,6 +137,55 @@ npx cap copy ios             # web/ → ios/App/App/public/
 - 폰에서는 **화면에 들어왔다고 키보드를 띄우지 않는다**. 다만 이미 입력 중이면
   (`document.activeElement`가 입력창) 다음 단어로 넘어갈 때 다시 포커스한다 —
   안 그러면 한 단어 쓸 때마다 키보드가 내려간다.
+
+## 간격 반복 복습 (`오늘 복습`)
+
+오답은 `wrong_count` 만 쌓는 게 아니라 **다음에 볼 날짜**를 갖는다.
+`next_review_date <= 오늘` 인 단어가 대시보드의 `오늘 복습` 에 모인다.
+
+- 오답이면 `wrong_count` 에 따라 1개 → 3일, 2개 → 2일, 3개 이상 → 1일 뒤.
+  틀릴수록 자주 나오게 하는 게 목적이다
+- 정답이면 7일 뒤로 밀되 `wrong_count` 는 그대로 둔다
+- **정답 2회 연속**이어야 `mastered_words` 로 졸업한다 (`GRADUATE_STREAK`).
+  4지선다는 찍어서 맞을 확률이 25% 라 한 번으로는 안 된다.
+  오답이 하나라도 끼면 `correct_streak` 는 0으로 돌아간다
+
+### `showFeedback` 에 채점을 넣지 말 것
+
+`showFeedback` 은 **렌더 함수**다. 답을 낸 문제로 이전/다음 버튼을 눌러
+되돌아올 때마다 다시 호출된다 (`renderQuizQuestion` 안 두 곳). 예전의
+`setMastered` 는 멱등이라 아무 일도 없었지만, `Store.recordCorrect` 는
+연속 횟수를 올리므로 여기 두면 **문제를 한 번만 맞히고도 버튼을 왕복해서
+졸업시킬 수 있다**. 채점은 `applyCorrectAnswer` 가 제출 경로에서만 하고,
+`word.scored` 로 한 번 더 막는다.
+
+### 복습 출제량 상한
+
+만기 단어를 전부 내면 안 된다. 마이그레이션 백필이 기존 70개를 **전부 같은
+날 만기**로 만들기 때문에, 상한이 없으면 첫날 70문항(15분 이상)이 나오고
+그날의 새 단어 학습이 통째로 밀린다.
+
+기본 20문항 (`REVIEW_QUIZ_LIMIT_DEFAULT`, `voca_review_limit` 로 조정).
+`Store.getDueIncorrect()` 가 **많이 틀린 순 → 오래 밀린 순**으로 정렬해서
+상한이 걸려도 제일 안 외워진 단어가 먼저 나간다.
+
+배지는 만기 **총 개수**를 보여준다. 상한을 넘으면 `20 / 70` 처럼 적어서
+남은 양이 보이게 한다 — 출제 수만 보여주면 밀린 게 없는 것처럼 보인다.
+
+`voca_review_limit` 은 `voca_tracing_hints` 와 같은 이유로 `Store` 밖에 있다.
+이 기기가 하루에 몇 문제를 내는지는 학습 기록이 아니라서 동기화 페이로드에
+낄 이유가 없다.
+
+### 옛 레코드는 "오늘 만기"로 본다
+
+`next_review_date` 가 없는 localStorage 레코드(구버전이 쓴 것)는 오늘 날짜로
+간주한다 — `store.js` 의 `normalizeIncorrect` 한 곳에서만 처리한다. 숨기는
+쪽으로 폴백하면 업데이트 직후 이미 기다리던 단어가 사라진다. 서버도 같은
+규칙이다 (`_read_sync_state`, 그리고 병합의 `or row[...]` 폴백 — 새 필드를
+모르는 클라이언트가 LWW 에서 이겨도 값을 지우지 않는다).
+
+날짜는 **로컬 캘린더 날짜**다. `updated_at` 의 UTC 타임스탬프와 다르다 —
+"오늘"은 사용자가 보고 있는 벽시계여야 한다.
 
 ## 건드릴 때 주의할 것
 

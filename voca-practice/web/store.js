@@ -20,6 +20,51 @@ const Store = (() => {
 
     const now = () => new Date().toISOString();
 
+    // --- Spaced repetition ---
+    //
+    // Review dates are calendar days in the user's own timezone, not instants:
+    // "due today" has to mean the wall clock they are looking at. Kept in step
+    // with run.py's WRONG_REVIEW_INTERVALS / CORRECT_REVIEW_DAYS — both sides
+    // compute the date locally and the merge only ever moves the string.
+
+    const WRONG_REVIEW_INTERVALS = { 1: 3, 2: 2 };  // wrong_count -> days
+    const WRONG_REVIEW_MIN_DAYS = 1;                // wrong_count 3 and up
+    const CORRECT_REVIEW_DAYS = 7;                  // a right answer buys a week
+    const GRADUATE_STREAK = 2;                      // consecutive correct to master
+
+    // 'sv-SE' is the shortest way to get a local-time YYYY-MM-DD out of Date.
+    const todayStr = () => new Date().toLocaleDateString('sv-SE');
+
+    const reviewIntervalDays = wrongCount =>
+        WRONG_REVIEW_INTERVALS[Number(wrongCount) || 0] || WRONG_REVIEW_MIN_DAYS;
+
+    /** 'YYYY-MM-DD' + n days. Built through local Date parts on purpose —
+     *  new Date('2026-08-06') is parsed as UTC midnight and can land on the
+     *  previous day once formatted back in a negative-offset timezone. */
+    function addDays(dateStr, days) {
+        const parts = String(dateStr || '').slice(0, 10).split('-').map(Number);
+        const base = (parts.length === 3 && parts.every(n => !isNaN(n)))
+            ? new Date(parts[0], parts[1] - 1, parts[2])
+            : new Date();
+        base.setDate(base.getDate() + days);
+        return base.toLocaleDateString('sv-SE');
+    }
+
+    const nextReviewAfterMiss = (wrongCount, fromDate) =>
+        addDays(fromDate || todayStr(), reviewIntervalDays(wrongCount));
+
+    /** Fill in fields added after this record was written. Records stored by an
+     *  older build carry no next_review_date — those count as due today, so an
+     *  upgrade never hides a word that was already waiting. */
+    function normalizeIncorrect(w) {
+        return {
+            ...w,
+            wrong_count: w.wrong_count || 0,
+            next_review_date: w.next_review_date || todayStr(),
+            correct_streak: w.correct_streak || 0
+        };
+    }
+
     function read(key, fallback) {
         try {
             const raw = localStorage.getItem(key);
@@ -45,7 +90,33 @@ const Store = (() => {
     function getIncorrect() {
         return allIncorrect()
             .filter(w => !w.deleted)
-            .map(w => ({ english: w.english, korean: w.korean, category: w.category }));
+            .map(normalizeIncorrect)
+            .map(w => ({
+                english: w.english,
+                korean: w.korean,
+                category: w.category,
+                wrong_count: w.wrong_count,
+                next_review_date: w.next_review_date,
+                correct_streak: w.correct_streak
+            }));
+    }
+
+    /**
+     * Words whose review date has come round. Ordered the way they should be
+     * studied when there are more due than one sitting allows: most-missed
+     * first, then longest-overdue, so a capped session spends its slots on the
+     * words that are actually failing.
+     */
+    function getDueIncorrect() {
+        const today = todayStr();
+        return allIncorrect()
+            .filter(w => !w.deleted)
+            .map(normalizeIncorrect)
+            .filter(w => w.next_review_date <= today)
+            .sort((a, b) =>
+                (b.wrong_count - a.wrong_count) ||
+                a.next_review_date.localeCompare(b.next_review_date) ||
+                a.english.localeCompare(b.english));
     }
 
     function recordIncorrect(word, fallbackCategory) {
@@ -56,12 +127,15 @@ const Store = (() => {
 
         if (existing) {
             // Missing it again revives a graduated word and keeps its running count.
+            // The streak resets: "twice in a row" has to mean in a row.
             existing.wrong_count = (existing.wrong_count || 0) + 1;
             existing.korean = word.korean;
             existing.category = word.category || fallbackCategory || existing.category;
             existing.last_wrong_date = localDate;
             existing.updated_at = stamp;
             existing.deleted = false;
+            existing.next_review_date = nextReviewAfterMiss(existing.wrong_count);
+            existing.correct_streak = 0;
         } else {
             list.push({
                 english: word.english,
@@ -70,10 +144,43 @@ const Store = (() => {
                 wrong_count: 1,
                 last_wrong_date: localDate,
                 updated_at: stamp,
-                deleted: false
+                deleted: false,
+                next_review_date: nextReviewAfterMiss(1),
+                correct_streak: 0
             });
         }
         write(K_INCORRECT, list);
+    }
+
+    /**
+     * A right answer on a word that is still in the 오답노트.
+     *
+     * The word does not leave on the first correct answer — on a 4-choice
+     * question that is a 25% guess. It gets pushed a week out and only
+     * graduates after GRADUATE_STREAK correct answers in a row. `wrong_count`
+     * is left alone: it is the word's history, and it is what run.py merges
+     * with max(), so decrementing it here would be undone on the next sync
+     * anyway.
+     *
+     * Returns null if the word is not in the list, otherwise
+     * { graduated, streak, nextReviewDate }.
+     */
+    function recordCorrect(english) {
+        const list = allIncorrect();
+        const existing = list.find(w => w.english === english);
+        if (!existing || existing.deleted) return null;
+
+        const streak = (existing.correct_streak || 0) + 1;
+        const graduated = streak >= GRADUATE_STREAK;
+
+        existing.correct_streak = streak;
+        existing.next_review_date = addDays(todayStr(), CORRECT_REVIEW_DAYS);
+        existing.updated_at = now();
+        if (graduated) existing.deleted = true;
+        write(K_INCORRECT, list);
+
+        if (graduated) setMastered(english, true);
+        return { graduated, streak, nextReviewDate: existing.next_review_date };
     }
 
     function graduateIncorrect(english) {
@@ -96,7 +203,9 @@ const Store = (() => {
             wrong_count: 1,
             last_wrong_date: '',
             updated_at: new Date(0).toISOString(),
-            deleted: false
+            deleted: false,
+            next_review_date: todayStr(),
+            correct_streak: 0
         })));
     }
 
@@ -192,7 +301,8 @@ const Store = (() => {
     const exportToExcel = () => request('/api/export', { method: 'POST' });
 
     return {
-        getIncorrect, recordIncorrect, graduateIncorrect, seedIncorrectIfEmpty,
+        getIncorrect, getDueIncorrect, recordIncorrect, recordCorrect,
+        graduateIncorrect, seedIncorrectIfEmpty, GRADUATE_STREAK, CORRECT_REVIEW_DAYS,
         getMasteredSet, setMastered, migrateLegacyMastered,
         getWords, setWords,
         getServerUrl, setServerUrl, getLastSync, DEFAULT_SERVER,

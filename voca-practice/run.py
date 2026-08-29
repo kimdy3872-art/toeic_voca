@@ -8,7 +8,7 @@ import socketserver
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from openpyxl import load_workbook
 import sqlite3
@@ -45,6 +45,43 @@ def local_str_to_iso(value):
         return None
 
 
+# Spaced repetition. The interval shrinks as the miss count grows, so a word you
+# keep getting wrong comes back sooner. Kept in step with store.js — both sides
+# compute review dates locally and the merge only moves the resulting string.
+WRONG_REVIEW_INTERVALS = {1: 3, 2: 2}   # wrong_count -> days until the next look
+WRONG_REVIEW_MIN_DAYS = 1               # wrong_count 3 and up
+CORRECT_REVIEW_DAYS = 7                 # a correct answer pushes the word out a week
+
+
+def review_interval_days(wrong_count):
+    """Days to wait before showing a just-missed word again."""
+    try:
+        count = int(wrong_count or 0)
+    except (TypeError, ValueError):
+        count = 0
+    return WRONG_REVIEW_INTERVALS.get(count, WRONG_REVIEW_MIN_DAYS)
+
+
+def today_local_str():
+    """Local calendar date, 'YYYY-MM-DD'. Review dates are days, not instants:
+    the user's 'today' is their wall clock, not UTC."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def add_days_str(date_str, days):
+    """'YYYY-MM-DD' plus a day offset. Falls back to today for anything
+    unparseable, which is also how a missing value is treated."""
+    try:
+        base = datetime.strptime(str(date_str).strip()[:10], "%Y-%m-%d")
+    except (ValueError, TypeError, AttributeError):
+        base = datetime.now()
+    return (base + timedelta(days=days)).strftime("%Y-%m-%d")
+
+
+def next_review_after_miss(wrong_count, from_date=None):
+    return add_days_str(from_date or today_local_str(), review_interval_days(wrong_count))
+
+
 def _column_names(cursor, table):
     cursor.execute(f"PRAGMA table_info({table})")
     return {row[1] for row in cursor.fetchall()}
@@ -78,6 +115,28 @@ def init_db():
     for eng, last_wrong in cursor.fetchall():
         stamp = local_str_to_iso(last_wrong) or utc_now_iso()
         cursor.execute("UPDATE incorrect_words SET updated_at = ? WHERE english = ?", (stamp, eng))
+
+    # Spaced-repetition bookkeeping. `next_review_date` is the day the word is due
+    # again; `correct_streak` counts consecutive correct answers, because a word
+    # only graduates to mastered_words after two in a row (one right answer on a
+    # 4-choice question is a 25% guess).
+    if "next_review_date" not in existing_cols:
+        cursor.execute("ALTER TABLE incorrect_words ADD COLUMN next_review_date TEXT")
+    if "correct_streak" not in existing_cols:
+        cursor.execute("ALTER TABLE incorrect_words ADD COLUMN correct_streak INTEGER DEFAULT 0")
+    cursor.execute("UPDATE incorrect_words SET correct_streak = 0 WHERE correct_streak IS NULL")
+    # Backfill from the last miss, using the same interval rule as a live wrong
+    # answer. Rows with no usable last_wrong_date fall back to today, i.e. due now.
+    cursor.execute("""
+        SELECT english, wrong_count, last_wrong_date FROM incorrect_words
+        WHERE next_review_date IS NULL OR next_review_date = ''
+    """)
+    backfilled = cursor.fetchall()
+    for eng, wrong_count, last_wrong in backfilled:
+        due = next_review_after_miss(wrong_count, last_wrong or today_local_str())
+        cursor.execute("UPDATE incorrect_words SET next_review_date = ? WHERE english = ?", (due, eng))
+    if backfilled:
+        print(f"Backfilled next_review_date for {len(backfilled)} incorrect words.")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS mastered_words (
@@ -140,19 +199,24 @@ def record_incorrect_word(english, korean, category):
         row = cursor.fetchone()
         if row:
             # Clearing the tombstone: a word answered correctly and later missed again
-            # is live once more, and keeps its accumulated count.
+            # is live once more, and keeps its accumulated count. The miss also resets
+            # the correct streak — "twice in a row" means in a row.
+            new_count = (row[0] or 0) + 1
             cursor.execute("""
                 UPDATE incorrect_words
                 SET wrong_count = ?, last_wrong_date = ?, category = ?, korean = ?,
-                    updated_at = ?, deleted = 0
+                    updated_at = ?, deleted = 0, next_review_date = ?, correct_streak = 0
                 WHERE english = ?
-            """, ((row[0] or 0) + 1, now_str, category, korean, utc_now_iso(), english))
+            """, (new_count, now_str, category, korean, utc_now_iso(),
+                  next_review_after_miss(new_count), english))
         else:
             cursor.execute("""
                 INSERT INTO incorrect_words
-                (english, korean, category, wrong_count, last_wrong_date, updated_at, deleted)
-                VALUES (?, ?, ?, 1, ?, ?, 0)
-            """, (english, korean, category, now_str, utc_now_iso()))
+                (english, korean, category, wrong_count, last_wrong_date, updated_at, deleted,
+                 next_review_date, correct_streak)
+                VALUES (?, ?, ?, 1, ?, ?, 0, ?, 0)
+            """, (english, korean, category, now_str, utc_now_iso(),
+                  next_review_after_miss(1)))
         conn.commit()
         print(f"Successfully recorded incorrect word '{english}' to SQLite DB.")
     finally:
@@ -205,7 +269,8 @@ def export_to_excel():
 def _read_sync_state(conn):
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT english, korean, category, wrong_count, last_wrong_date, updated_at, deleted
+        SELECT english, korean, category, wrong_count, last_wrong_date, updated_at, deleted,
+               next_review_date, correct_streak
         FROM incorrect_words
     """)
     incorrect = [
@@ -217,6 +282,10 @@ def _read_sync_state(conn):
             "last_wrong_date": r[4] or "",
             "updated_at": r[5] or "",
             "deleted": bool(r[6]),
+            # A row that predates this column reads as due today, matching the
+            # same fallback store.js applies to old localStorage records.
+            "next_review_date": r[7] or today_local_str(),
+            "correct_streak": r[8] or 0,
         }
         for r in cursor.fetchall()
     ]
@@ -241,7 +310,8 @@ def merge_sync_payload(incoming_incorrect, incoming_mastered):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT english, korean, category, wrong_count, last_wrong_date, updated_at, deleted
+            SELECT english, korean, category, wrong_count, last_wrong_date, updated_at, deleted,
+                   next_review_date, correct_streak
             FROM incorrect_words
         """)
         local = {r[0]: r for r in cursor.fetchall()}
@@ -256,8 +326,9 @@ def merge_sync_payload(incoming_incorrect, incoming_mastered):
             if row is None:
                 cursor.execute("""
                     INSERT INTO incorrect_words
-                    (english, korean, category, wrong_count, last_wrong_date, updated_at, deleted)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (english, korean, category, wrong_count, last_wrong_date, updated_at, deleted,
+                     next_review_date, correct_streak)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     eng,
                     str(item.get("korean", "") or ""),
@@ -266,16 +337,24 @@ def merge_sync_payload(incoming_incorrect, incoming_mastered):
                     str(item.get("last_wrong_date", "") or ""),
                     remote_stamp or utc_now_iso(),
                     1 if item.get("deleted") else 0,
+                    str(item.get("next_review_date", "") or "") or today_local_str(),
+                    int(item.get("correct_streak", 0) or 0),
                 ))
                 continue
 
             local_stamp = str(row[5] or "")
             merged_count = max(remote_count, int(row[3] or 0))
             if remote_stamp > local_stamp:
+                # `next_review_date` and `correct_streak` ride along with the LWW
+                # metadata rather than taking a max: unlike wrong_count they are not
+                # monotonic (a right answer pushes the date out, a wrong one resets
+                # the streak), so the newer write is simply the truthful one. The
+                # `or row[...]` fallbacks keep a client that predates these fields
+                # from blanking them when it wins the timestamp comparison.
                 cursor.execute("""
                     UPDATE incorrect_words
                     SET korean = ?, category = ?, wrong_count = ?, last_wrong_date = ?,
-                        updated_at = ?, deleted = ?
+                        updated_at = ?, deleted = ?, next_review_date = ?, correct_streak = ?
                     WHERE english = ?
                 """, (
                     str(item.get("korean", "") or row[1] or ""),
@@ -284,6 +363,8 @@ def merge_sync_payload(incoming_incorrect, incoming_mastered):
                     str(item.get("last_wrong_date", "") or row[4] or ""),
                     remote_stamp,
                     1 if item.get("deleted") else 0,
+                    str(item.get("next_review_date", "") or "") or row[7] or today_local_str(),
+                    int(item.get("correct_streak", row[8] or 0) or 0),
                     eng,
                 ))
             elif merged_count != int(row[3] or 0):

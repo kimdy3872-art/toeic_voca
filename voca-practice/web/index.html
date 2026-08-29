@@ -101,6 +101,19 @@
 
             <!-- 1. Dashboard View -->
             <section id="view-dashboard" class="content-view active">
+                <!-- Spaced-repetition entry point. The badge counts every word whose
+                     review date has come round, while the quiz itself is capped
+                     (REVIEW_QUIZ_LIMIT): the total is what shows how much backlog is
+                     left, the cap is what keeps one sitting short. -->
+                <button id="review-entry" class="review-entry" onclick="startReviewQuiz()" disabled>
+                    <span class="review-entry-icon">🔁</span>
+                    <span class="review-entry-body">
+                        <span class="review-entry-title">오늘 복습 <span id="review-badge" class="review-badge">0</span></span>
+                        <span id="review-entry-sub" class="review-entry-sub">복습할 단어가 없습니다</span>
+                    </span>
+                    <svg class="review-entry-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </button>
+
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon icon-blue">
@@ -147,7 +160,7 @@
                             </li>
                             <li>
                                 <div class="tip-icon">✍️</div>
-                                <div class="tip-text">연습 퀴즈에서 오답이 발생하면 <strong>'오답노트'</strong>에 자동 등록되고, 이후 어떤 퀴즈에서든 해당 단어를 한 번이라도 맞히면 오답노트에서 즉시 제거됩니다.</div>
+                                <div class="tip-text">연습 퀴즈에서 오답이 발생하면 <strong>'오답노트'</strong>에 등록되고, 틀린 횟수에 따라 <strong>1~3일 뒤</strong>로 복습일이 잡힙니다. 맞히면 복습일이 7일 뒤로 밀리고 <strong>연속 2회</strong> 맞혀야 졸업합니다. 만기가 된 단어는 대시보드의 <strong>오늘 복습</strong>에 모입니다.</div>
                             </li>
                             <li>
                                 <div class="tip-icon">📱</div>
@@ -452,6 +465,17 @@
                 <div class="modal-actions">
                     <button class="action-btn-primary" onclick="syncNow()">지금 동기화</button>
                     <button id="btn-export-excel" class="action-btn-secondary" onclick="exportIncorrectToExcel()">오답노트 엑셀 백업</button>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <label for="review-limit-input">하루 복습 문항 수</label>
+                <p class="modal-hint">"오늘 복습"을 한 번 눌렀을 때 낼 최대 문항 수입니다. 만기 단어가 이보다 많으면 많이 틀린 단어부터 출제되고, 나머지는 다음 날로 넘어갑니다.</p>
+                <input type="number" id="review-limit-input" min="5" max="200" step="5"
+                       inputmode="numeric" autocorrect="off" spellcheck="false">
+                <div class="modal-actions">
+                    <button class="action-btn-primary" onclick="saveReviewLimit()">문항 수 저장</button>
+                    <button class="action-btn-secondary" onclick="resetReviewLimit()">기본값(20)으로</button>
                 </div>
             </div>
 

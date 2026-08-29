@@ -23,7 +23,7 @@ let tracingPhoneticToken = 0;
 // Quiz State
 let quizDirection = 'eng-to-kor'; // 'eng-to-kor' or 'kor-to-eng'
 let quizType = 'choice'; // 'choice' or 'write'
-let quizRange = 'all'; // 'all' or 'incorrect'
+let quizRange = 'all'; // 'all', 'incorrect', or 'review' (today's due words)
 let quizFullRange = false; // when true, ignore the 10-question cap and quiz every word in range
 let quizIndex = 0;
 let quizWords = [];
@@ -220,7 +220,7 @@ function applyWords(words) {
 // Refresh only the parts that depend on 오답노트, without disturbing the current view.
 function refreshIncorrectViews() {
     db['오답노트'] = Store.getIncorrect();
-    updateDashboard();
+    updateDashboard();          // also refreshes the 오늘 복습 badge
     updateQuizConfigUI();
 }
 
@@ -286,6 +286,8 @@ function updateDashboard() {
     const incorrectCount = db['오답노트'] ? db['오답노트'].length : 0;
     document.getElementById('stat-incorrect-words').textContent = incorrectCount;
     
+    updateReviewEntry();
+
     // Render Day progress list
     const progressList = document.getElementById('progress-list');
     progressList.innerHTML = '';
@@ -717,6 +719,30 @@ function buildChoiceOptions(word) {
     return shuffleArray([{ ...word }, ...wrongOptions]);
 }
 
+// ---------------------------------------------------------------------------
+// Today's review (spaced repetition)
+// ---------------------------------------------------------------------------
+
+// How many due words one review sitting may ask about. The backfill leaves every
+// existing word due on the same day, and a 70-question 4-choice run is a quarter
+// of an hour — long enough to push the day's new-word study aside. The badge
+// still shows the full due count so the backlog stays visible; the cap only
+// decides how much of it is served today, and Store.getDueIncorrect() orders by
+// wrong_count first so the slots go to the words that keep failing.
+const REVIEW_QUIZ_LIMIT_DEFAULT = 20;
+const REVIEW_LIMIT_KEY = 'voca_review_limit';   // per-device preference, deliberately
+                                                // outside Store: how many questions
+                                                // this device serves is not study
+                                                // history and has no place in the
+                                                // sync payload (same call as
+                                                // voca_tracing_hints).
+
+function getReviewLimit() {
+    const raw = parseInt(localStorage.getItem(REVIEW_LIMIT_KEY), 10);
+    if (!raw || isNaN(raw) || raw < 1) return REVIEW_QUIZ_LIMIT_DEFAULT;
+    return Math.min(raw, 200);
+}
+
 function setQuizDirection(direction) {
     quizDirection = direction;
     document.getElementById('chip-dir-eng-to-kor').classList.toggle('active', direction === 'eng-to-kor');
@@ -794,20 +820,31 @@ function updateQuizConfigUI() {
 
 function startQuiz() {
     let targetWords = [];
-    if (quizRange === 'incorrect') {
+    if (quizRange === 'review') {
+        targetWords = Store.getDueIncorrect();
+    } else if (quizRange === 'incorrect') {
         targetWords = getIncorrectWordsForCurrentCategory();
     } else {
         targetWords = currentWords;
     }
     
     if (targetWords.length === 0) {
-        alert('퀴즈를 시작할 단어가 없습니다.');
+        alert(quizRange === 'review'
+            ? '오늘 복습할 단어가 없습니다.'
+            : '퀴즈를 시작할 단어가 없습니다.');
         return;
     }
     
-    // Shuffle, then cap at 10 unless "전체 출제" is on
-    const shuffled = shuffleArray(targetWords);
-    quizWords = quizFullRange ? shuffled : shuffled.slice(0, Math.min(10, shuffled.length));
+    if (quizRange === 'review') {
+        // Already ordered most-missed first — take the top N, then shuffle only
+        // that slice so the priority picks the words but the run is not
+        // predictable.
+        quizWords = shuffleArray(targetWords.slice(0, getReviewLimit()));
+    } else {
+        // Shuffle, then cap at 10 unless "전체 출제" is on
+        const shuffled = shuffleArray(targetWords);
+        quizWords = quizFullRange ? shuffled : shuffled.slice(0, Math.min(10, shuffled.length));
+    }
     
     quizWords.forEach(word => {
         word.isAnswered = false;
@@ -827,6 +864,45 @@ function startQuiz() {
     document.getElementById('quiz-screen').style.display = 'block';
     
     renderQuizQuestion();
+}
+
+/**
+ * Dashboard entry point. Forces the 4-choice format the review flow is specified
+ * around, then goes straight into the quiz — no config step, since the point is
+ * that the app decides what is due.
+ */
+function startReviewQuiz() {
+    if (!Store.getDueIncorrect().length) return;   // the button is disabled anyway
+
+    switchView('quiz');           // this resets the config card, so it goes first
+    quizRange = 'review';
+    setQuizType('choice');
+    document.getElementById('quiz-config').style.display = 'none';
+    startQuiz();
+}
+
+/** Badge + enabled state for the dashboard's 오늘 복습 button. */
+function updateReviewEntry() {
+    const btn = document.getElementById('review-entry');
+    if (!btn) return;
+
+    const due = Store.getDueIncorrect().length;
+    const limit = getReviewLimit();
+    const badge = document.getElementById('review-badge');
+    const sub = document.getElementById('review-entry-sub');
+
+    // Show the whole backlog, but say how much of it today's run covers, so a
+    // capped session never looks like the queue is empty.
+    badge.textContent = due > limit ? `${limit} / ${due}` : String(due);
+    btn.disabled = due === 0;
+
+    if (due === 0) {
+        sub.textContent = '복습할 단어가 없습니다';
+    } else if (due > limit) {
+        sub.textContent = `만기 ${due}개 중 ${limit}개를 4지선다로 출제합니다 (많이 틀린 단어 우선)`;
+    } else {
+        sub.textContent = `${due}개를 4지선다로 출제합니다`;
+    }
 }
 
 function renderQuizQuestion() {
@@ -1004,11 +1080,12 @@ function submitChoiceAnswer() {
     }
     
     if (isCorrect) {
+        applyCorrectAnswer(word);
         showFeedback(true, word);
     } else {
         document.querySelector('.quiz-card').classList.add('shake');
-        showFeedback(false, word);
         saveIncorrectWord(word);
+        showFeedback(false, word);
     }
 }
 
@@ -1085,11 +1162,12 @@ function submitTypedAnswer() {
     }
     
     if (isCorrect) {
+        applyCorrectAnswer(correctWord);
         showFeedback(true, correctWord);
     } else {
         document.querySelector('.quiz-card').classList.add('shake');
-        showFeedback(false, correctWord);
         saveIncorrectWord(correctWord);
+        showFeedback(false, correctWord);
     }
 }
 
@@ -1108,13 +1186,7 @@ function showFeedback(isCorrect, word) {
         titleEl.textContent = '정답입니다!';
         titleEl.style.color = 'var(--accent-green)';
 
-        masteredWords.add(word.english);
-        Store.setMastered(word.english, true);
-
-        // Graduate the word out of 오답노트 the moment it's answered correctly
-        if (db['오답노트'] && db['오답노트'].some(w => w.english === word.english)) {
-            removeIncorrectWord(word.english);
-        }
+        if (word.graduated) titleEl.textContent = '정답입니다! 오답노트 졸업 🎓';
 
         if (overrideBtn) overrideBtn.style.display = 'none';
     } else {
@@ -1136,7 +1208,8 @@ function showFeedback(isCorrect, word) {
         }
     }
 
-    subtextEl.innerHTML = `<strong>${word.english}</strong> : ${word.korean}`;
+    subtextEl.innerHTML = `<strong>${word.english}</strong> : ${word.korean}`
+        + (word.reviewNotice ? `<span class="feedback-review-note">${word.reviewNotice}</span>` : '');
     
     // Toggle prev/next buttons
     const prevBtn = document.getElementById('quiz-prev-btn');
@@ -1170,6 +1243,13 @@ function overrideMarkCorrect() {
     if (!word || word.isCorrect) return;
 
     word.isCorrect = true;
+    // The strict string match already banked this as a miss, and that stays:
+    // wrong_count is monotonic history and run.py merges it with max(), so
+    // decrementing here would only be undone by the next sync. Crediting the
+    // correct answer is enough — it starts the streak and pushes the review
+    // date out, which is what the user is actually asking for.
+    word.scored = false;
+    applyCorrectAnswer(word);
     showFeedback(true, word);
 
     const scoreDisplayEl = document.getElementById('quiz-score-display');
@@ -1218,10 +1298,44 @@ function showQuizResults() {
 }
 
 function restartQuizSetup() {
+    // 'review' is only ever entered from the dashboard button; the config card
+    // has no chip for it, so returning here has to fall back to a real range.
+    if (quizRange === 'review') quizRange = 'all';
     document.getElementById('quiz-config').style.display = 'block';
     document.getElementById('quiz-screen').style.display = 'none';
     document.getElementById('quiz-results').style.display = 'none';
     updateQuizConfigUI();
+}
+
+/**
+ * Bank a correct answer. Called once, from the submit paths — never from
+ * showFeedback, which re-runs every time the user navigates back onto an
+ * answered question and would otherwise graduate a word on a streak of one.
+ *
+ * A word in the 오답노트 does not leave on a single right answer: on a 4-choice
+ * question that is a 25% guess. It takes two in a row (Store.GRADUATE_STREAK),
+ * and in between its review date is pushed a week out. Words that were never
+ * missed keep the original behaviour — one correct answer marks them mastered.
+ */
+function applyCorrectAnswer(word) {
+    if (word.scored) return;   // idempotent: 정답 처리 override can re-enter
+    word.scored = true;
+
+    const inIncorrect = db['오답노트'] && db['오답노트'].some(w => w.english === word.english);
+    if (!inIncorrect) {
+        masteredWords.add(word.english);
+        Store.setMastered(word.english, true);
+        return;
+    }
+
+    const result = Store.recordCorrect(word.english);
+    if (result && result.graduated) {
+        masteredWords.add(word.english);
+        word.graduated = true;
+    } else if (result) {
+        word.reviewNotice = `연속 정답 ${result.streak}/${Store.GRADUATE_STREAK}회 — ${Store.CORRECT_REVIEW_DAYS}일 뒤 다시 확인합니다`;
+    }
+    refreshIncorrectViews();
 }
 
 // Record a wrong answer locally. No network involved — the Mac finds out on the
@@ -1231,12 +1345,6 @@ function saveIncorrectWord(word) {
     refreshIncorrectViews();
 }
 
-// Graduate a word out of 오답노트 once it's answered correctly.
-function removeIncorrectWord(english) {
-    if (Store.graduateIncorrect(english)) {
-        refreshIncorrectViews();
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Sync & settings
@@ -1343,6 +1451,7 @@ function updateLocalStats() {
 
 function openSettings() {
     document.getElementById('server-url-input').value = Store.getServerUrl();
+    document.getElementById('review-limit-input').value = getReviewLimit();
     updateSyncStatus();
     updateLocalStats();
     document.getElementById('settings-overlay').classList.add('open');
@@ -1365,6 +1474,27 @@ function saveServerUrl() {
     Store.setServerUrl(value);
     updateSyncStatus();
     showToast('서버 주소를 저장했습니다.', 'success');
+}
+
+function saveReviewLimit() {
+    const input = document.getElementById('review-limit-input');
+    const value = parseInt(input.value, 10);
+    if (!value || isNaN(value) || value < 5 || value > 200) {
+        showToast('5에서 200 사이의 숫자를 입력하세요.', 'error');
+        input.value = getReviewLimit();
+        return;
+    }
+    localStorage.setItem(REVIEW_LIMIT_KEY, String(value));
+    input.value = value;
+    updateReviewEntry();
+    showToast(`하루 복습 문항 수를 ${value}개로 저장했습니다.`, 'success');
+}
+
+function resetReviewLimit() {
+    localStorage.removeItem(REVIEW_LIMIT_KEY);
+    document.getElementById('review-limit-input').value = REVIEW_QUIZ_LIMIT_DEFAULT;
+    updateReviewEntry();
+    showToast(`하루 복습 문항 수를 기본값(${REVIEW_QUIZ_LIMIT_DEFAULT}개)으로 되돌렸습니다.`, 'success');
 }
 
 function resetServerUrl() {

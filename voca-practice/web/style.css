@@ -411,6 +411,118 @@ body {
 }
 
 /* 1. Dashboard Styles */
+/* ---- Today's review entry point (dashboard) ---------------------------- */
+
+.review-entry {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    border-radius: 20px;
+    border: 1px solid rgba(233, 64, 87, 0.35);
+    background:
+        linear-gradient(135deg, rgba(138, 35, 135, 0.22), rgba(233, 64, 87, 0.16)),
+        var(--card-bg);
+    backdrop-filter: blur(12px);
+    color: var(--text-main);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.review-entry:hover:not(:disabled) {
+    border-color: rgba(233, 64, 87, 0.6);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px rgba(138, 35, 135, 0.25);
+}
+
+/* Nothing due is the goal state, not an error — it reads as quietly finished
+   rather than broken, but must not look clickable. */
+.review-entry:disabled {
+    cursor: default;
+    opacity: 0.5;
+    border-color: var(--card-border);
+    background: var(--card-bg);
+}
+
+.review-entry-icon {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    background: rgba(233, 64, 87, 0.15);
+    box-shadow: 0 8px 16px rgba(233, 64, 87, 0.05);
+}
+
+.review-entry-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.review-entry-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.review-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+}
+
+.review-entry:disabled .review-badge {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-muted);
+}
+
+.review-entry-sub {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.review-entry-arrow {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    margin-left: auto;
+    color: var(--text-muted);
+}
+
+.review-entry:disabled .review-entry-arrow {
+    display: none;
+}
+
+/* The streak line under a correct answer that did not graduate the word. */
+.feedback-review-note {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--accent-green);
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1579,6 +1691,29 @@ body {
     .stats-grid {
         grid-template-columns: 1fr;
         gap: 0.75rem;
+    }
+
+    /* Same reasoning as .stat-card below: this sits above the stats, so any
+       height it wastes pushes everything else off the first screen. */
+    .review-entry {
+        padding: 1.1rem 1.25rem;
+        gap: 1rem;
+        border-radius: 16px;
+        margin-bottom: 0.75rem;
+    }
+
+    .review-entry-icon {
+        width: 44px;
+        height: 44px;
+        font-size: 1.35rem;
+    }
+
+    .review-entry-title {
+        font-size: 1.1rem;
+    }
+
+    .review-entry-sub {
+        font-size: 0.78rem;
     }
 
     /* The desktop card is a tall hero; on a phone three of them push the
