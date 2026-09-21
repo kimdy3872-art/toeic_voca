@@ -265,9 +265,6 @@ function onCategoryChange() {
     if (card) card.classList.remove('flipped');
     
     updateStudyUI();
-    // Only read the new first card aloud if the user is actually looking at the
-    // study view (this also runs on initial load, from the dashboard).
-    if (views.study.classList.contains('active')) speakCurrentStudyWord();
     if (views.tracing && views.tracing.classList.contains('active')) updateTracingUI();
     updateDashboard();
     updateQuizConfigUI();
@@ -339,12 +336,10 @@ function switchView(viewName) {
         titleEl.textContent = '카드 암기학습';
         subtitleEl.textContent = '카드 뒷면을 확인하며 영단어의 발음과 뜻을 암기합니다.';
         updateStudyUI();
-        speakCurrentStudyWord();
     } else if (viewName === 'tracing') {
         titleEl.textContent = '단어 따라쓰기';
         subtitleEl.textContent = '뜻을 보고 철자를 따라 쓰며 스펠링을 익힙니다.';
         updateTracingUI();
-        speakTracingWord();
     } else if (viewName === 'quiz') {
         titleEl.textContent = '연습 퀴즈';
         subtitleEl.textContent = '영어 ➔ 한국어 혹은 한국어 ➔ 영어 테스트를 진행합니다.';
@@ -395,14 +390,6 @@ function updateStudyUI() {
     document.getElementById('flashcard').classList.remove('flipped');
 }
 
-// Auto-read is a side effect of *navigating* to a card, not of re-rendering it.
-// Keeping it out of updateStudyUI() prevents the same card being read again every
-// time the view/category is re-rendered.
-function speakCurrentStudyWord() {
-    const word = currentWords[studyIndex];
-    if (word) speak(word.english);
-}
-
 function flipCard() {
     if (currentWords.length === 0) return;
     isFlipped = !isFlipped;
@@ -413,7 +400,6 @@ function prevWord() {
     if (currentWords.length === 0) return;
     studyIndex = (studyIndex - 1 + currentWords.length) % currentWords.length;
     updateStudyUI();
-    speakCurrentStudyWord();
 }
 
 function nextWord() {
@@ -422,7 +408,6 @@ function nextWord() {
     // Auto master previous card when clicking next? Let's just track current index
     studyIndex = (studyIndex + 1) % currentWords.length;
     updateStudyUI();
-    speakCurrentStudyWord();
 }
 
 function speakWord(event) {
@@ -937,10 +922,6 @@ function renderQuizQuestion() {
     if (quizDirection === 'eng-to-kor') {
         questionText.textContent = word.english;
         ttsBtn.style.display = 'flex';
-        // Speak automatically only if we are moving forward to an unanswered question
-        if (!word.isAnswered) {
-            speak(word.english);
-        }
     } else {
         // The full gloss, not one meaning of it: with several meanings on screen the
         // answer is pinned to a single word, and the learner has to match the whole profile.
@@ -1785,14 +1766,13 @@ function submitTracingWord() {
         return;
     }
 
-    // Unfinished or misspelled: stay on the word, show the spelling, say it out loud.
+    // Unfinished or misspelled: stay on the word, show the spelling.
     const trackEl = tracingEl('tracing-track');
     trackEl.classList.remove('shake');
     void trackEl.offsetWidth; // restart the animation even on consecutive tries
     trackEl.classList.add('shake');
 
     revealTracingSpelling();
-    speakTracingWord();
 }
 
 // Force the ghost letters visible for a moment regardless of the hint toggle -
@@ -1873,14 +1853,12 @@ function prevTracingWord() {
     if (!currentWords.length) return;
     tracingIndex = (tracingIndex - 1 + currentWords.length) % currentWords.length;
     updateTracingUI();
-    speakTracingWord();
 }
 
 function nextTracingWord() {
     if (!currentWords.length) return;
     tracingIndex = (tracingIndex + 1) % currentWords.length;
     updateTracingUI();
-    speakTracingWord();
 }
 
 function speakTracingWord(event) {
