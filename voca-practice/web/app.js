@@ -359,6 +359,7 @@ function updateStudyUI() {
     const catBack = document.getElementById('card-cat-back');
     
     totalEl.textContent = currentWords.length;
+    renderStudyWordList();
     
     if (currentWords.length === 0) {
         wordEl.textContent = '단어 없음';
@@ -388,6 +389,54 @@ function updateStudyUI() {
     
     isFlipped = false;
     document.getElementById('flashcard').classList.remove('flipped');
+}
+
+/* The word list beside the card: doubles as a progress read-out and a jump
+   target, so a long DAY no longer means arrowing through 20 cards to reach one. */
+function renderStudyWordList() {
+    const listEl = document.getElementById('study-word-list');
+    if (!listEl) return;
+
+    const titleEl = document.getElementById('study-panel-title');
+    const countEl = document.getElementById('study-panel-count');
+    const fillEl = document.getElementById('study-panel-fill');
+    const total = currentWords.length;
+
+    titleEl.textContent = selectedCategory === 'all' ? '전체 DAY' : selectedCategory;
+    countEl.textContent = `${total ? studyIndex + 1 : 0} / ${total}`;
+    fillEl.style.width = total ? `${((studyIndex + 1) / total) * 100}%` : '0';
+
+    // 전체 DAY is ~850 words: rebuilding every row on every arrow press is wasted
+    // work, so only the highlight moves unless the word set itself changed.
+    const wrong = Store.getIncorrect();
+    const key = `${selectedCategory}:${total}:${masteredWords.size}:${wrong.length}`;
+    if (listEl.dataset.key === key) {
+        listEl.querySelectorAll('li').forEach((li, i) => li.classList.toggle('current', i === studyIndex));
+    } else {
+        listEl.dataset.key = key;
+        buildStudyWordRows(listEl, new Set(wrong.map(w => w.english)));
+    }
+
+    const current = listEl.querySelector('li.current');
+    if (current) current.scrollIntoView({ block: 'nearest' });
+}
+
+function buildStudyWordRows(listEl, wrongSet) {
+    listEl.innerHTML = currentWords.map((w, i) => {
+        const badge = masteredWords.has(w.english) ? '<i class="dot dot-mastered"></i>'
+                    : wrongSet.has(w.english) ? '<i class="dot dot-wrong"></i>'
+                    : '';
+        return `<li class="${i === studyIndex ? 'current' : ''}" onclick="goToWord(${i})">
+            <span class="word-no">${i + 1}</span>
+            <span class="word-en">${w.english}</span>${badge}
+        </li>`;
+    }).join('');
+}
+
+function goToWord(index) {
+    if (index === studyIndex || !currentWords[index]) return;
+    studyIndex = index;
+    updateStudyUI();
 }
 
 function flipCard() {
